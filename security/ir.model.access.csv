@@ -1,0 +1,4 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_res_partner_otp,access_res_partner_otp,base.model_res_partner,base.group_user,1,1,1,1
+access_otp_code,access_otp_code,model_otp_code,base.group_user,1,1,1,1
+access_otp_code_admin,access_otp_code_admin,model_otp_code,base.group_system,1,1,1,1

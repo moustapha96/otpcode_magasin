@@ -1,0 +1,55 @@
+<odoo>
+  <record id="view_partner_form_with_otp" model="ir.ui.view">
+    <field name="name">res.partner.form.otp</field>
+    <field name="model">res.partner</field>
+    <field name="inherit_id" ref="base.view_partner_form"/>
+    <field name="arch" type="xml">
+      <xpath expr="//sheet/notebook" position="inside">
+        <page string="Vérification / OTP">
+          <group>
+            <group>
+              <field name="phone"/>
+              <field name="email"/>
+            </group>
+            <group>
+              <field name="otp_verified" widget="boolean_toggle" string="Compte vérifié"/>
+            </group>
+          </group>
+
+          <separator string="Actions OTP"/>
+
+          <group>
+            <button name="send_otp"
+                    type="object"
+                    class="oe_highlight"
+                    string="Envoyer OTP"/>
+            <button name="get_otp"
+                    type="object"
+                    string="Voir OTP (debug)"
+                    groups="base.group_system"/>
+            <button name="purge_partner_otps"
+                    type="object"
+                    string="Purger tous les OTP"
+                    class="btn-secondary"
+                    groups="base.group_system"/>
+          </group>
+
+          <separator string="Historique des OTP (lecture seule)" groups="base.group_system"/>
+
+          <field name="otp_code_ids" groups="base.group_system">
+            <tree create="false" delete="false" editable="false">
+              <field name="code"/>
+              <field name="expiration"/>
+            </tree>
+            <form>
+              <group>
+                <field name="code" readonly="1"/>
+                <field name="expiration" readonly="1"/>
+              </group>
+            </form>
+          </field>
+        </page>
+      </xpath>
+    </field>
+  </record>
+</odoo>
