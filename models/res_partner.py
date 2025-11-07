@@ -3,6 +3,10 @@
 # from datetime import timedelta
 # import random
 
+# import logging
+
+# _logger = logging.getLogger(__name__)
+
 # class ResPartner(models.Model):
 #     _inherit = 'res.partner'
 
@@ -11,12 +15,22 @@
 
 #     # ---------- Utils ----------
 #     def _purge_partner_otps(self):
-#         """Supprime tous les OTP pour ce partenaire."""
+#         """Helper privé: supprime tous les OTP pour ce partenaire."""
 #         for partner in self:
 #             self.env['otp.code'].sudo().search([('partner_id', '=', partner.id)]).unlink()
 
+#     def purge_partner_otps(self):
+#         """
+#         Action bouton (publique) appelée par la vue.
+#         Doit exister pour éviter 'n'est pas une action valide'.
+#         """
+#         self._purge_partner_otps()
+#         # Optionnel: message feedback en chatter
+#         for p in self:
+#             p.message_post(body="Tous les OTP de ce partenaire ont été purgés.")
+#         return True
+
 #     def _make_otp(self, ttl_minutes=30):
-#         """Crée un OTP (4 chiffres) avec expiration, sans envoi."""
 #         self.ensure_one()
 #         otp_code = ''.join(random.choices('0123456789', k=4))
 #         expiration = fields.Datetime.now() + timedelta(minutes=ttl_minutes)
@@ -27,9 +41,7 @@
 #         })
 #         return rec
 
-#     # ---------- Voir le code (debug/outillage) ----------
 #     def get_otp(self):
-#         """Renvoie un OTP valide si existant, sinon purge et recrée."""
 #         self.ensure_one()
 #         existing = self.env['otp.code'].sudo().search([
 #             ('partner_id', '=', self.id),
@@ -37,68 +49,56 @@
 #         ], limit=1, order="expiration desc")
 #         if existing:
 #             return existing.code
-#         # Sinon purge + recrée
 #         self._purge_partner_otps()
 #         if self.phone or self.mobile:
 #             rec = self._make_otp(ttl_minutes=30)
 #             return rec.code
 #         return False
 
-#     # ---------- Génération + envoi ----------
 #     def send_otp(self):
-#         """Purge, génère nouveau code, envoie par SMS, retourne le code (pour logs)."""
 #         for partner in self:
 #             partner._purge_partner_otps()
 #             rec = partner._make_otp(ttl_minutes=30)
-#             otp_code = rec.code
-
+#             code = rec.code
 #             phone = partner.mobile or partner.phone
-#             message_sms = (
-#                 f"Bonjour,\n"
-#                 f"Votre code de vérification est {otp_code}\n"
-#                 f"Merci de ne pas répondre à ce message.\n"
-#                 f"Equipe CCTS"
-#             )
 #             if phone:
-#                 self.send_sms(phone, message_sms)
-#             # Retourne pour logs (NE PAS exposer au client)
-#             return otp_code
+#                 try:
+#                     phone = int(phone)
+#                     message = (
+#                         f"Bonjour,\nVotre code de vérification est {code}\n"
+#                         f"Merci de ne pas répondre à ce message.\nEquipe CCTS"
+#                     )
+#                     self.send_sms(phone, message)
+#                 except ValueError:
+#                     _logger.error(f"Invalid phone number: {phone}")
+#             return code
 
-#     # ---------- Vérification ----------
 #     def verify_otp(self, otp_code):
-#         """Vérifie l'OTP et purge tous les OTP du partner si succès."""
 #         self.ensure_one()
 #         otp_rec = self.env['otp.code'].sudo().search([
 #             ('partner_id', '=', self.id),
-#             ('code', '=', str(otp_code)),
+#             ('code', '=', otp_code),
 #             ('expiration', '>', fields.Datetime.now()),
 #         ], limit=1)
+        
+#         _logger.info(otp_rec)
 
 #         if not otp_rec:
-#             # purge des expirés optionnelle
-#             self.env['otp.code'].sudo().search([
-#                 ('partner_id', '=', self.id),
-#                 ('expiration', '<=', fields.Datetime.now()),
-#             ]).unlink()
 #             return False
-
-#         # succès
 #         self.write({'otp_verified': True, 'is_verified': True})
-#         self._purge_partner_otps()
+#         # self._purge_partner_otps()
 #         return True
 
-#     # ---------- Envoi SMS ----------
 #     @api.model
 #     def send_sms(self, recipient, message):
-#         """Envoie SMS via send.sms (adapté à ton module)."""
-#         sms_record = self.env['send.sms'].sudo().create({
+#         sms = self.env['send.sms'].sudo().create({
 #             'recipient': recipient,
 #             'message': message,
 #         })
-#         return sms_record.send_sms()
+#         return sms.send_sms()
 
 
-# class OtpCode(models.Model):  # <-- persistant (pas Transient) pour audit si besoin
+# class OtpCode(models.Model):  # garder un modèle persistant (pas transient) si tu veux voir l'historique
 #     _name = 'otp.code'
 #     _description = 'OTP Code'
 
@@ -114,6 +114,9 @@
 from odoo import models, fields, api
 from datetime import timedelta
 import random
+import logging
+
+_logger = logging.getLogger(__name__)
 
 class ResPartner(models.Model):
     _inherit = 'res.partner'
@@ -123,24 +126,18 @@ class ResPartner(models.Model):
 
     # ---------- Utils ----------
     def _purge_partner_otps(self):
-        """Helper privé: supprime tous les OTP pour ce partenaire."""
         for partner in self:
             self.env['otp.code'].sudo().search([('partner_id', '=', partner.id)]).unlink()
 
     def purge_partner_otps(self):
-        """
-        Action bouton (publique) appelée par la vue.
-        Doit exister pour éviter 'n'est pas une action valide'.
-        """
         self._purge_partner_otps()
-        # Optionnel: message feedback en chatter
         for p in self:
             p.message_post(body="Tous les OTP de ce partenaire ont été purgés.")
         return True
 
     def _make_otp(self, ttl_minutes=30):
         self.ensure_one()
-        otp_code = ''.join(random.choices('0123456789', k=4))
+        otp_code = ''.join(random.choices('0123456789', k=4))  # ex: "0123"
         expiration = fields.Datetime.now() + timedelta(minutes=ttl_minutes)
         rec = self.env['otp.code'].sudo().create({
             'partner_id': self.id,
@@ -168,31 +165,40 @@ class ResPartner(models.Model):
             partner._purge_partner_otps()
             rec = partner._make_otp(ttl_minutes=30)
             code = rec.code
-            phone = partner.mobile or partner.phone
+            phone = (partner.mobile or partner.phone or "").strip()
             if phone:
-                message = (
-                    f"Bonjour,\nVotre code de vérification est {code}\n"
-                    f"Merci de ne pas répondre à ce message.\nEquipe CCTS"
-                )
-                self.send_sms(phone, message)
+                try:
+                    # NE PAS convertir en int : garde les zéros et le format E.164 si présent
+                    message = (
+                        f"Bonjour,\nVotre code de vérification est {code}\n"
+                        f"Merci de ne pas répondre à ce message.\nEquipe CCTS"
+                    )
+                    self.send_sms(phone, message)
+                except Exception:
+                    _logger.exception("Erreur lors de l'envoi SMS")
             return code
 
     def verify_otp(self, otp_code):
         self.ensure_one()
+        # --- Normalisation forte du code ---
+        code = str(otp_code or "").strip()
+        if not code.isdigit():
+            return False
+        code = code.zfill(4)  # "123" -> "0123"
+
+        now = fields.Datetime.now()
         otp_rec = self.env['otp.code'].sudo().search([
             ('partner_id', '=', self.id),
-            ('code', '=', str(otp_code)),
-            ('expiration', '>', fields.Datetime.now()),
-        ], limit=1)
+            ('code', '=', code),
+            ('expiration', '>=', now),
+        ], limit=1, order='id desc')
+
         if not otp_rec:
-            # # purge des expirés (optionnel)
-            # self.env['otp.code'].sudo().search([
-            #     ('partner_id', '=', self.id),
-            #     ('expiration', '<=', fields.Datetime.now()),
-            # ]).unlink()
             return False
-        self.write({'otp_verified': True, 'is_verified': True})
-        self._purge_partner_otps()
+
+        self.sudo().write({'otp_verified': True, 'is_verified': True})
+        # Optionnel : sécuriser en purgeant après succès
+        # self._purge_partner_otps()
         return True
 
     @api.model
@@ -204,7 +210,7 @@ class ResPartner(models.Model):
         return sms.send_sms()
 
 
-class OtpCode(models.Model):  # garder un modèle persistant (pas transient) si tu veux voir l'historique
+class OtpCode(models.Model):
     _name = 'otp.code'
     _description = 'OTP Code'
 
